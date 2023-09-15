@@ -12,12 +12,12 @@ import tkinter as tk
 from tkinter import ttk
 import sqlite3
 from tkinter import messagebox
-import sqlite3
 import mistune
 import markdown
 import webbrowser
+import concurrent.futures
 
-
+db_file = 'database/problem.db'
 class HTMLRenderer(mistune.HTMLRenderer):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -28,7 +28,7 @@ class HTMLRenderer(mistune.HTMLRenderer):
             return f'<pre><code class="{lang}">{code}</code></pre>\n'
         return f'<pre><code>{mistune.escape(code)}</code></pre>\n'
 # 连接SQLite数据库，如果数据库不存在则会自动创建
-conn = sqlite3.connect('problem.db')
+conn = sqlite3.connect(db_file)
 cursor = conn.cursor()
 
 # 创建problem_table表格
@@ -69,19 +69,23 @@ def main():
     sum = int(total_entry.get())
     counter = 0
     print("计划爬取到P{}".format(maxn))
-    with ThreadPoolExecutor(max_workers=15) as executor:  # 设置线程池最大线程数为5
+    with ThreadPoolExecutor(max_workers=6) as executor:  # 设置线程池最大线程数
+        futures = []
         for i in range(minn, maxn+1):
-            executor.submit(crawl_problem, i)
+            future = executor.submit(crawl_problem, i)
+            futures.append(future)
             counter += 1
             if counter >= sum:
                 break
+        # 等待所有任务完成
+        concurrent.futures.wait(futures)
     print("爬取完毕")
 
 def crawl_problem(i):
     print("正在爬取P{}...\n".format(i), end="")
     problem_url = base_url + str(i)
 
-    conn = sqlite3.connect('problem.db')
+    conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
     # 检查是否存在相同的 problem_id
     cursor.execute(f"SELECT * FROM problem_table WHERE problem_id={i}")
@@ -133,7 +137,6 @@ def get_html(url):
     
 def get_sol(url,i,problem_title,problem_directory):
     headers = {
-      "C3VK":'2290c2',
       "Cookie": '__client_id=4309367d9ac6b47f41df97c6121a5c33b5aef9a9;_uid=790971;',
       "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/117.0"
     }
@@ -198,7 +201,7 @@ def create_directory(tag_name,directory_name):
     return directory_path
 def query():
      # 数据库连接
-    conn = sqlite3.connect('problem.db')
+    conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
     # 查询语句
     query_sql = "SELECT * FROM problem_table WHERE 1=1"
@@ -227,7 +230,7 @@ def query():
         difficulty = row[3]
         tags = row[4].replace('\n', ';')
         path = row[5]
-        formatted_result.append(f"题号：{problem_id}\n题目：{problem_title}\n难度：{difficulty}\n标签：{tags}\n{path}")
+        formatted_result.append(f"题号：{problem_id}\n题目：{problem_title}\n难度：{difficulty}\n标签：{tags}\n点击下方路径打开题目文件夹：\n{path}\n\n")
 
     # 显示查询结果
     result_text.config(state='normal')
@@ -252,7 +255,7 @@ def handle_click(event):
         folder_path = path + "\\" + folder_path
         convert_md_to_html(folder_path)
         return
-    else:
+    elif folder_path:
         path = folder_path
         file_list = get_file_list(folder_path)
         
@@ -283,7 +286,7 @@ def convert_md_to_html(filepath):
     <meta charset="utf-8">
     <script>
         MathJax = {{
-            tex: {{inlineMath: [['$', '$'], ['\\(', '\\)']]}}
+            tex: {{inlineMath: [['$', '$'], ['\\\\(', '\\\\)']]}}
         }}
     </script>
     <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
@@ -300,7 +303,7 @@ def convert_md_to_html(filepath):
 # 清空数据库
 def clear_database():
     # 数据库连接
-    conn = sqlite3.connect('problem.db')
+    conn = sqlite3.connect(db_file)
     cursor = conn.cursor()
 
     # 清空数据表
